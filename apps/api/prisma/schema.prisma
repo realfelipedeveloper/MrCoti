@@ -52,6 +52,33 @@ enum OrderItemStatus {
   CANCELLED
 }
 
+enum BillStatus {
+  DRAFT
+  PAYMENT_PENDING
+  PAYMENT_FAILED
+  PAID
+  CLOSED
+}
+
+enum FakePaymentMethod {
+  CASH_FAKE
+  CARD_FAKE
+}
+
+enum FakePaymentScenario {
+  APPROVED
+  DECLINED
+  FAILED
+}
+
+enum FakePaymentStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  FAILED
+  RECORDED
+}
+
 enum MembershipStatus {
   ACTIVE
   DISABLED
@@ -93,6 +120,8 @@ model Tenant {
   tables          RestaurantTable[]
   tabs            Tab[]
   orderItems      OrderItem[]
+  bills           Bill[]
+  fakePayments    FakePayment[]
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
@@ -128,6 +157,8 @@ model Unit {
   tables          RestaurantTable[]
   tabs            Tab[]
   orderItems      OrderItem[]
+  bills           Bill[]
+  fakePayments    FakePayment[]
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
@@ -237,6 +268,7 @@ model Tab {
   unit       Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
   table      RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
   orderItems OrderItem[]
+  bill       Bill?
   createdAt  DateTime        @default(now()) @map("created_at")
   updatedAt  DateTime        @updatedAt @map("updated_at")
 
@@ -266,4 +298,48 @@ model OrderItem {
   @@index([tenantId, unitId, tabId, status])
   @@index([tenantId, productId])
   @@map("order_items")
+}
+
+model Bill {
+  id              String        @id @default(cuid()) @db.VarChar(191)
+  tenantId        String        @map("tenant_id") @db.VarChar(191)
+  unitId          String        @map("unit_id") @db.VarChar(191)
+  tabId           String        @unique @map("tab_id") @db.VarChar(191)
+  subtotalCents   Int           @map("subtotal_cents")
+  discountCents   Int           @default(0) @map("discount_cents")
+  serviceFeeCents Int           @default(0) @map("service_fee_cents")
+  totalCents      Int           @map("total_cents")
+  paidCents       Int           @default(0) @map("paid_cents")
+  status          BillStatus    @default(DRAFT)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit            Unit          @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  tab             Tab           @relation(fields: [tabId], references: [id], onDelete: Restrict)
+  fakePayments    FakePayment[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, status])
+  @@index([tenantId, unitId, createdAt])
+  @@map("bills")
+}
+
+model FakePayment {
+  id          String              @id @default(cuid()) @db.VarChar(191)
+  tenantId    String              @map("tenant_id") @db.VarChar(191)
+  unitId      String              @map("unit_id") @db.VarChar(191)
+  billId      String              @map("bill_id") @db.VarChar(191)
+  amountCents Int                 @map("amount_cents")
+  method      FakePaymentMethod
+  status      FakePaymentStatus   @default(REQUESTED)
+  scenario    FakePaymentScenario @default(APPROVED)
+  fake        Boolean             @default(true)
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit        Unit                @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  bill        Bill                @relation(fields: [billId], references: [id], onDelete: Restrict)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, billId, status])
+  @@index([tenantId, status])
+  @@map("fake_payments")
 }
