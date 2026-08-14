@@ -1,0 +1,7 @@
+{
+  "name": "@mrcoti/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Frontend Next.js do Mr Coti para a fatia dev/local.",
+  "license": "UNLICENSED"
+}
