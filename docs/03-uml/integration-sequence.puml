@@ -1,0 +1,67 @@
+@startuml
+title Mr Coti — Sequência confiável de integração via outbox
+autonumber
+skinparam shadowing false
+
+actor "Usuário do tenant" as User
+participant "API Mr Coti\nCaso de uso" as API
+database "MySQL\nDomínio + Outbox" as DB
+participant "Publicador\nde Outbox" as Publisher
+queue "Redis / BullMQ" as Queue
+participant "Worker de\nIntegração" as Worker
+participant "Porta de\nIntegração" as Port
+participant "Adaptador fake\nPagamento / Nota / Notificação" as Fake
+participant "Webhook\nMr Coti" as Webhook
+
+User -> API : solicita operação\nJWT + idempotency key + correlation-id
+API -> API : valida tenant, feature, limite e RBAC
+API -> DB : BEGIN
+API -> DB : persiste intenção/estado tenant-aware
+API -> DB : persiste evento na outbox\n(mesma transação)
+API -> DB : COMMIT
+API --> User : 202/pending ou estado local confirmado
+
+loop lote de mensagens pendentes
+  Publisher -> DB : reserva outbox por lease
+  DB --> Publisher : evento versionado + tenant_id
+  Publisher -> Queue : adiciona job com event_id
+  Publisher -> DB : marca publicado
+end
+
+Queue -> Worker : entrega job (ao menos uma vez)
+Worker -> DB : verifica idempotência e estado atual
+alt já processado
+  DB --> Worker : resultado existente
+  Worker --> Queue : sucesso sem repetir efeito
+else novo processamento
+  Worker -> Port : executa operação normalizada
+  Port -> Fake : chama adapter com timeout\ne chave idempotente
+  alt sucesso ou resultado de negócio
+    Fake --> Port : resultado normalizado
+    Port --> Worker : resultado
+    Worker -> DB : salva resultado + deduplicação\nem transação
+    Worker --> Queue : sucesso
+  else falha transitória/timeout
+    Fake --> Port : indisponível ou desconhecido
+    Port --> Worker : erro classificado
+    Worker --> Queue : retry com backoff\nou intervenção após limite
+  end
+end
+
+opt evento assíncrono do provider fake
+  Fake -> Webhook : evento assinado + event_id
+  Webhook -> DB : persiste recebimento/deduplicação
+  Webhook --> Fake : 2xx rápido
+  Webhook -> Queue : processa assincronamente
+end
+
+note over API,DB
+  Nenhuma chamada externa ocorre dentro
+  da transação do agregado.
+end note
+
+note over Queue,Fake
+  Duplicidade é esperada; exatamente uma vez
+  é obtido no efeito por idempotência.
+end note
+@enduml

@@ -1,0 +1,59 @@
+@startuml
+title Mr Coti — Ciclo de vida de comanda, pedido e fechamento
+skinparam shadowing false
+
+state "Comanda aberta" as TabOpen
+state "Pedido em edição" as Draft
+state "Pedido confirmado" as Confirmed
+state "Pedido em preparo" as Preparing
+state "Pedido pronto" as Ready
+state "Pedido entregue" as Delivered
+state "Pedido cancelado" as Cancelled
+state "Fechamento pendente" as Closing
+state "Pagamento pendente" as PaymentPending
+state "Pagamento confirmado" as Paid
+state "Nota fake pendente" as InvoicePending
+state "Comanda fechada" as Closed
+state "Comanda reaberta" as Reopened
+
+[*] --> TabOpen : abrir mesa/comanda
+TabOpen --> Draft : adicionar itens
+Draft --> Draft : alterar itens
+Draft --> Confirmed : confirmar pedido\n[pedido válido]
+Draft --> Cancelled : cancelar rascunho
+Confirmed --> Preparing : iniciar preparo
+Confirmed --> Cancelled : cancelar\n[permissão + motivo]
+Preparing --> Ready : concluir preparo
+Preparing --> Cancelled : cancelamento excepcional\n[permissão + auditoria]
+Ready --> Delivered : entregar
+
+TabOpen --> Closing : solicitar fechamento
+Delivered --> Closing : último pedido entregue\ne fechamento solicitado
+Closing --> PaymentPending : calcular total, divisão\ne taxa de serviço
+PaymentPending --> PaymentPending : falha/timeout consultável\nou nova tentativa autorizada
+PaymentPending --> Paid : captura confirmada\nou pagamento local registrado
+Paid --> InvoicePending : solicitar nota fake\n[quando aplicável]
+Paid --> Closed : nota não solicitada
+InvoicePending --> Closed : autorizada ou rejeitada\ncom resultado registrado
+InvoicePending --> InvoicePending : indisponibilidade/retry
+
+Closed --> Reopened : reabrir\n[permissão + motivo + auditoria]
+Reopened --> TabOpen : retomar operação
+Closed --> [*]
+Cancelled --> [*] : se não houver itens ativos
+
+note right of Confirmed
+  Confirmação gera eventos internos
+  para estoque e projeções.
+end note
+
+note right of PaymentPending
+  Idempotency key evita cobrança duplicada.
+  Timeout não implica falha definitiva.
+end note
+
+note bottom of Closed
+  Estado financeiro, cobrança externa
+  e emissão fake têm trilhas distintas.
+end note
+@enduml

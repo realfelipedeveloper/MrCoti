@@ -1,0 +1,47 @@
+@startuml
+title Mr Coti — Contexto do sistema
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+
+actor "Administrador\ndo tenant" as TenantAdmin
+actor "Gestor de\nunidade" as Manager
+actor "Equipe de\natendimento" as Staff
+actor "Cliente do\nrestaurante" as Customer
+actor "Operação interna\ndo Mr Coti" as SaaSOps
+
+rectangle "Mr Coti\nPlataforma SaaS multi-tenant\npara gestão de operações de alimentação" as System #DDEEFF
+
+rectangle "Provider de pagamento\n(fictício inicialmente)" as Payment
+rectangle "Emissor de notas\n(fictício, sem validade fiscal)" as Invoice
+rectangle "Providers de notificação\n(fake: e-mail, SMS e WhatsApp)" as Notification
+rectangle "AWS\n(infraestrutura futura)" as AWS
+
+TenantAdmin --> System : configura tenant, usuários,\nplanos e operação
+Manager --> System : gerencia unidade, cardápio,\nestoque, caixa e relatórios
+Staff --> System : atende mesas, comandas\ne pedidos
+Customer --> System : participa de reservas\ne atendimento quando habilitado
+SaaSOps --> System : provisiona, suporta, audita\ne opera o SaaS
+
+System --> Payment : cobranças, captura, estorno\ne webhooks
+System --> Invoice : emissão/cancelamento fake\ne webhooks
+System --> Notification : mensagens, status\ne logs por canal
+System ..> AWS : execução cloud-ready futura
+
+note bottom of System
+  Fronteira comercial e de isolamento: Tenant
+  Empresas e unidades existem dentro do tenant
+  Feature flags, planos, limites, RBAC e auditoria
+end note
+
+note bottom of Payment
+  Sucesso, falha, timeout,
+  fraude e chargeback
+end note
+
+note bottom of Invoice
+  Autorizada, rejeitada
+  e indisponibilidade
+end note
+@enduml

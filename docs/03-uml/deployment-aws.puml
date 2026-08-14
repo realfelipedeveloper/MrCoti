@@ -1,0 +1,63 @@
+@startuml
+title Mr Coti — Implantação AWS futura de referência
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor "Usuário" as User
+
+cloud "AWS — uma região, múltiplas AZs" as AWS {
+  component "Route 53\nDNS" as Route53
+  component "CloudFront\nCDN e entrada web" as CloudFront
+
+  node "Rede privada" as Private {
+    node "ECS Fargate\n(implantação inicial de referência)" as ECS {
+      component "Frontend\nNext.js" as Web
+      component "API\nNestJS — monólito modular" as API
+      component "Workers\nNestJS + BullMQ" as Workers
+    }
+
+    database "RDS MySQL\nMulti-AZ\nSingle DB + tenant_id" as RDS
+    queue "ElastiCache Redis\nBullMQ + cache" as Redis
+  }
+
+  storage "S3\nObjetos tenant-aware" as S3
+  component "CloudWatch\nLogs, métricas e alarmes" as CloudWatch
+  component "Secrets Manager\nSecrets por ambiente" as Secrets
+  component "SES / SNS / SQS\nAdaptadores futuros por ADR" as Future
+}
+
+User --> Route53 : HTTPS
+Route53 --> CloudFront
+CloudFront --> Web : conteúdo/aplicação
+CloudFront --> API : API versionada
+Web --> API : REST/JSON
+API --> RDS : TLS / Prisma
+API --> Redis : cache / enqueue
+Workers --> Redis : consome jobs
+Workers --> RDS : outbox, estado, idempotência
+API --> S3 : porta de objetos
+Workers --> S3 : artefatos/exportações
+API ..> Secrets : configuração segura
+Workers ..> Secrets : configuração segura
+API ..> CloudWatch : telemetria estruturada
+Workers ..> CloudWatch : telemetria estruturada
+Web ..> CloudWatch : telemetria permitida
+Workers ..> Future : providers/filas futuros
+
+note bottom of ECS
+  Containers stateless e imagens imutáveis.
+  API, web e workers escalam separadamente,
+  sem transformar módulos em microsserviços.
+end note
+
+note bottom of RDS
+  Migrations como etapa única e controlada.
+  Backup e restauração testados.
+end note
+
+note right of Future
+  Não adotados nesta etapa.
+  Diferenças semânticas exigem ADR.
+end note
+@enduml

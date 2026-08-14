@@ -1,0 +1,54 @@
+@startuml
+title Mr Coti — Bounded contexts no monólito modular
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+package "Backend Mr Coti — um único implantável" {
+  component "Core SaaS\nTenant, plano, assinatura,\nlimite e feature" as SaaS #DDEEFF
+  component "Identidade e Acesso\nUsuário, sessão, RBAC\ne escopo" as IAM #DDEEFF
+  component "Cardápio\nProduto, preço e\ndisponibilidade" as Catalog
+  component "Operação e Pedidos\nMesa, comanda, pedido\ne fechamento" as Orders
+  component "Estoque e Compras\nInsumo, movimento,\nfornecedor e compra" as Stock
+  component "Financeiro e Caixa\nCaixa, recebimento\ne recibo" as Finance
+  component "Clientes e CRM\nCliente, preferência\ne consentimento" as CRM
+  component "Reservas\nReserva, no-show\ne mesa" as Reservations
+  component "Relatórios\nProjeções de leitura" as Reporting
+  component "Integrações\nPortas, adaptadores,\nwebhooks e idempotência" as Integrations #E8FFE8
+  component "Auditoria\nTrilha de ações críticas" as Audit
+}
+
+SaaS --> IAM : tenant ativo, plano\ne entitlements
+SaaS --> Catalog : features e limites
+SaaS --> Orders : features e limites
+SaaS --> Stock : features e limites
+SaaS --> Finance : features e limites
+SaaS --> CRM : features e limites
+SaaS --> Reservations : features e limites
+IAM --> Catalog : contexto autorizado
+IAM --> Orders : contexto autorizado
+IAM --> Stock : contexto autorizado
+IAM --> Finance : contexto autorizado
+
+Catalog --> Orders : snapshot vendável
+Orders ..> Stock : eventos de item\nconfirmado/cancelado
+Orders --> Finance : total e fechamento
+Finance --> Integrations : cobrança
+Orders --> Integrations : emissão e notificações
+CRM --> Reservations : cliente e preferências\npermitidas
+
+Orders ..> Reporting : eventos/projeções
+Stock ..> Reporting : eventos/projeções
+Finance ..> Reporting : eventos/projeções
+
+SaaS ..> Audit : ações críticas
+IAM ..> Audit : acessos e mudanças
+Orders ..> Audit : cancelamento/reabertura
+Finance ..> Audit : operações de caixa
+Integrations ..> Audit : intervenção/reprocessamento
+
+note bottom of Reporting
+  Setas não autorizam acesso direto a tabelas.
+  Colaboração ocorre por fachada de aplicação ou evento versionado.
+end note
+@enduml

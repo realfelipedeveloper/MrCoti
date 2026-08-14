@@ -1,0 +1,378 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mr Coti Public APIs",
+    "version": "1.0.0-draft",
+    "summary": "Contrato API-first das integrações fictícias do Mr Coti.",
+    "description": "APIs públicas fictícias de pagamentos, emissão de notas e notificações. Não movimentam dinheiro, não emitem documento fiscal real e não entregam mensagens a provedores reais. Contrato em estado draft até aprovação do API Contract Loop.",
+    "contact": { "name": "Mr Coti Architecture" }
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "servers": [
+    { "url": "https://api.sandbox.mrcoti.invalid/v1", "description": "Sandbox documental" }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "Payments", "description": "Cobranças fictícias e seu ciclo de vida." },
+    { "name": "Invoices", "description": "Documentos fiscais estritamente fictícios." },
+    { "name": "Notifications", "description": "Envios fake de e-mail, SMS e WhatsApp." },
+    { "name": "Webhooks", "description": "Cadastro dos destinos de eventos assíncronos." }
+  ],
+  "x-mr-coti-contract-scenarios": [
+    { "id": "PAY-SUCCESS", "given": "POST /charges com X-Simulation-Scenario: success e chave inédita", "expected": "201 PENDING; authorize/capture avançam a AUTHORIZED/CAPTURED" },
+    { "id": "PAY-FAILURE", "given": "operação com X-Simulation-Scenario: failure", "expected": "422 e estado consultável FAILED, sem novo efeito" },
+    { "id": "PAY-TIMEOUT", "given": "operação com X-Simulation-Scenario: timeout", "expected": "504 com Retry-After; cliente consulta a cobrança antes de repetir" },
+    { "id": "PAY-FRAUD", "given": "autorização com X-Simulation-Scenario: fraud", "expected": "422; cobrança FRAUD_REJECTED e webhook payment.status.changed.v1" },
+    { "id": "PAY-CHARGEBACK", "given": "captura com X-Simulation-Scenario: chargeback", "expected": "captura inicial e transição assíncrona CHARGEBACK via webhook" },
+    { "id": "INV-AUTHORIZED", "given": "POST /invoices com X-Simulation-Scenario: authorized", "expected": "202 PROCESSING e posterior AUTHORIZED com XML/PDF fake" },
+    { "id": "INV-REJECTED", "given": "POST /invoices com X-Simulation-Scenario: rejected", "expected": "202 PROCESSING e posterior REJECTED com rejectionCode" },
+    { "id": "INV-UNAVAILABLE", "given": "POST /invoices com X-Simulation-Scenario: unavailable", "expected": "503 com Retry-After ou estado FAILED consultável, sem duplicar emissão" },
+    { "id": "NTF-RETRY", "given": "notificação com X-Simulation-Scenario: timeout", "expected": "202 QUEUED; tentativas RETRY_SCHEDULED avançam até SENT ou DEAD_LETTER" },
+    { "id": "IDEMPOTENCY-REPLAY", "given": "mesma rota, tenant, Idempotency-Key e payload", "expected": "mesmo status e representação lógica da primeira resposta, sem efeito duplicado" },
+    { "id": "IDEMPOTENCY-CONFLICT", "given": "mesma rota, tenant e Idempotency-Key com payload diferente", "expected": "409 application/problem+json" },
+    { "id": "WEBHOOK-DUPLICATE", "given": "mesmo X-MrCoti-Event-Id entregue mais de uma vez", "expected": "consumidor confirma sem repetir efeito; tentativas ficam auditáveis" }
+  ],
+  "paths": {
+    "/charges": {
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "listCharges",
+        "summary": "Lista cobranças do tenant",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageSize" },
+          { "$ref": "#/components/parameters/PageAfter" },
+          { "$ref": "#/components/parameters/ChargeStatusFilter" },
+          { "$ref": "#/components/parameters/Sort" },
+          { "$ref": "#/components/parameters/CorrelationId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de cobranças.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "X-Correlation-Id": { "$ref": "#/components/headers/CorrelationId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChargePage" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      },
+      "post": {
+        "tags": ["Payments"],
+        "operationId": "createCharge",
+        "summary": "Cria cobrança fictícia",
+        "description": "Cria uma intenção idempotente. O cenário de simulação controla o comportamento fake e nunca aciona um adquirente real.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/CorrelationId" },
+          { "$ref": "#/components/parameters/PaymentSimulation" }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateChargeRequest" } } } },
+        "responses": {
+          "201": {
+            "description": "Cobrança criada.",
+            "headers": { "Location": { "schema": { "type": "string" } }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "X-Correlation-Id": { "$ref": "#/components/headers/CorrelationId" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Charge" }, "examples": { "success": { "value": { "id": "chg_01JEXAMPLE", "externalReference": "order_01JEXAMPLE", "amount": { "amount": "125.90", "currency": "BRL" }, "status": "PENDING", "simulationScenario": "success", "createdAt": "2026-06-23T15:00:00Z", "updatedAt": "2026-06-23T15:00:00Z" } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "504": { "$ref": "#/components/responses/SimulatedTimeout" }
+        }
+      }
+    },
+    "/charges/{chargeId}": {
+      "get": {
+        "tags": ["Payments"],
+        "operationId": "getCharge",
+        "summary": "Consulta cobrança",
+        "parameters": [{ "$ref": "#/components/parameters/ChargeId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": {
+          "200": { "description": "Cobrança encontrada.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Charge" } } }, "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/charges/{chargeId}/authorize": {
+      "post": {
+        "tags": ["Payments"], "operationId": "authorizeCharge", "summary": "Autoriza cobrança fictícia",
+        "parameters": [{ "$ref": "#/components/parameters/ChargeId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/PaymentSimulation" }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentActionRequest" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/ChargeResult" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "504": { "$ref": "#/components/responses/SimulatedTimeout" } }
+      }
+    },
+    "/charges/{chargeId}/capture": {
+      "post": {
+        "tags": ["Payments"], "operationId": "captureCharge", "summary": "Captura cobrança autorizada",
+        "parameters": [{ "$ref": "#/components/parameters/ChargeId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/PaymentSimulation" }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentActionRequest" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/ChargeResult" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "504": { "$ref": "#/components/responses/SimulatedTimeout" } }
+      }
+    },
+    "/charges/{chargeId}/cancel": {
+      "post": {
+        "tags": ["Payments"], "operationId": "cancelCharge", "summary": "Cancela cobrança elegível",
+        "parameters": [{ "$ref": "#/components/parameters/ChargeId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReasonRequest" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/ChargeResult" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/charges/{chargeId}/refund": {
+      "post": {
+        "tags": ["Payments"], "operationId": "refundCharge", "summary": "Estorna cobrança capturada",
+        "parameters": [{ "$ref": "#/components/parameters/ChargeId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/PaymentSimulation" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundRequest" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/ChargeResult" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "504": { "$ref": "#/components/responses/SimulatedTimeout" } }
+      }
+    },
+    "/invoices": {
+      "get": {
+        "tags": ["Invoices"], "operationId": "listInvoices", "summary": "Lista documentos fictícios",
+        "parameters": [{ "$ref": "#/components/parameters/PageSize" }, { "$ref": "#/components/parameters/PageAfter" }, { "$ref": "#/components/parameters/InvoiceStatusFilter" }, { "$ref": "#/components/parameters/Sort" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Página de documentos.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoicePage" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "post": {
+        "tags": ["Invoices"], "operationId": "issueInvoice", "summary": "Solicita emissão fictícia",
+        "description": "Cria um documento sem valor fiscal. A resposta pode ser assíncrona e será atualizada por consulta/webhook.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/InvoiceSimulation" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateInvoiceRequest" } } } },
+        "responses": { "202": { "description": "Emissão fictícia aceita.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } }, "headers": { "Location": { "schema": { "type": "string" } }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/IdempotencyConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "503": { "$ref": "#/components/responses/SimulatedUnavailable" } }
+      }
+    },
+    "/invoices/{invoiceId}": {
+      "get": {
+        "tags": ["Invoices"], "operationId": "getInvoice", "summary": "Consulta documento fictício",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Documento encontrado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/invoices/{invoiceId}/authorize": {
+      "post": {
+        "tags": ["Invoices"], "operationId": "authorizeFakeInvoice", "summary": "Força autorização no simulador",
+        "description": "Operação de controle disponível somente no sandbox fake para conduzir o documento ao estado AUTHORIZED; não representa autorização fiscal real.",
+        "x-required-role": "sandbox.simulation.control",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Documento fake autorizado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/invoices/{invoiceId}/reject": {
+      "post": {
+        "tags": ["Invoices"], "operationId": "rejectFakeInvoice", "summary": "Força rejeição no simulador",
+        "description": "Operação de controle disponível somente no sandbox fake; registra código e motivo sintéticos.",
+        "x-required-role": "sandbox.simulation.control",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RejectInvoiceRequest" } } } },
+        "responses": { "200": { "description": "Documento fake rejeitado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/invoices/{invoiceId}/cancel": {
+      "post": {
+        "tags": ["Invoices"], "operationId": "cancelInvoice", "summary": "Cancela documento fictício autorizado",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReasonRequest" } } } },
+        "responses": { "202": { "description": "Cancelamento aceito.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Invoice" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/invoices/{invoiceId}/xml": {
+      "get": {
+        "tags": ["Invoices"], "operationId": "downloadFakeInvoiceXml", "summary": "Baixa XML fake e sem valor fiscal",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "XML fake.", "headers": { "Content-Disposition": { "schema": { "type": "string" } } }, "content": { "application/xml": { "schema": { "type": "string", "contentMediaType": "application/xml" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/invoices/{invoiceId}/pdf": {
+      "get": {
+        "tags": ["Invoices"], "operationId": "downloadFakeInvoicePdf", "summary": "Baixa PDF fake e sem valor fiscal",
+        "parameters": [{ "$ref": "#/components/parameters/InvoiceId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "PDF fake.", "headers": { "Content-Disposition": { "schema": { "type": "string" } } }, "content": { "application/pdf": { "schema": { "type": "string", "contentEncoding": "base64", "contentMediaType": "application/pdf" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/StateConflict" } }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": ["Notifications"], "operationId": "listNotifications", "summary": "Lista notificações fake",
+        "parameters": [{ "$ref": "#/components/parameters/PageSize" }, { "$ref": "#/components/parameters/PageAfter" }, { "$ref": "#/components/parameters/NotificationStatusFilter" }, { "name": "filter[channel]", "in": "query", "schema": { "$ref": "#/components/schemas/NotificationChannel" } }, { "$ref": "#/components/parameters/Sort" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Página de notificações.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationPage" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/notifications/email": {
+      "$ref": "#/components/pathItems/SendEmail"
+    },
+    "/notifications/sms": {
+      "$ref": "#/components/pathItems/SendSms"
+    },
+    "/notifications/whatsapp": {
+      "$ref": "#/components/pathItems/SendWhatsapp"
+    },
+    "/notifications/{notificationId}": {
+      "get": {
+        "tags": ["Notifications"], "operationId": "getNotification", "summary": "Consulta status de notificação",
+        "parameters": [{ "$ref": "#/components/parameters/NotificationId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Notificação encontrada.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Notification" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/notifications/{notificationId}/logs": {
+      "get": {
+        "tags": ["Notifications"], "operationId": "listNotificationLogs", "summary": "Lista tentativas sanitizadas",
+        "parameters": [{ "$ref": "#/components/parameters/NotificationId" }, { "$ref": "#/components/parameters/PageSize" }, { "$ref": "#/components/parameters/PageAfter" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Tentativas sem conteúdo sensível.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationLogPage" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/webhook-endpoints": {
+      "get": {
+        "tags": ["Webhooks"], "operationId": "listWebhookEndpoints", "summary": "Lista endpoints do tenant",
+        "parameters": [{ "$ref": "#/components/parameters/PageSize" }, { "$ref": "#/components/parameters/PageAfter" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "200": { "description": "Endpoints cadastrados.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEndpointPage" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "post": {
+        "tags": ["Webhooks"], "operationId": "createWebhookEndpoint", "summary": "Cadastra endpoint de webhook",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateWebhookEndpointRequest" } } } },
+        "responses": { "201": { "description": "Endpoint criado; segredo só é exibido nesta resposta.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookEndpointCreated" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/IdempotencyConflict" } }
+      }
+    },
+    "/webhook-endpoints/{endpointId}": {
+      "delete": {
+        "tags": ["Webhooks"], "operationId": "deleteWebhookEndpoint", "summary": "Desabilita e remove endpoint",
+        "parameters": [{ "$ref": "#/components/parameters/WebhookEndpointId" }, { "$ref": "#/components/parameters/CorrelationId" }],
+        "responses": { "204": { "description": "Endpoint removido." }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    }
+  },
+  "webhooks": {
+    "paymentStatusChanged": {
+      "post": {
+        "summary": "Mudança de estado de cobrança, incluindo fraude e chargeback simulados.",
+        "parameters": [{ "$ref": "#/components/parameters/WebhookEventId" }, { "$ref": "#/components/parameters/WebhookTimestamp" }, { "$ref": "#/components/parameters/WebhookSignature" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentWebhook" } } } },
+        "responses": { "204": { "description": "Evento aceito pelo consumidor." } }
+      }
+    },
+    "invoiceStatusChanged": {
+      "post": {
+        "summary": "Mudança de estado de documento fictício.",
+        "parameters": [{ "$ref": "#/components/parameters/WebhookEventId" }, { "$ref": "#/components/parameters/WebhookTimestamp" }, { "$ref": "#/components/parameters/WebhookSignature" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceWebhook" } } } },
+        "responses": { "204": { "description": "Evento aceito pelo consumidor." } }
+      }
+    },
+    "notificationStatusChanged": {
+      "post": {
+        "summary": "Mudança de estado de notificação fake.",
+        "parameters": [{ "$ref": "#/components/parameters/WebhookEventId" }, { "$ref": "#/components/parameters/WebhookTimestamp" }, { "$ref": "#/components/parameters/WebhookSignature" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotificationWebhook" } } } },
+        "responses": { "204": { "description": "Evento aceito pelo consumidor." } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "Access token curto; tenant e scopes são validados no servidor." }
+    },
+    "headers": {
+      "RequestId": { "description": "Identificador único da requisição.", "schema": { "type": "string", "minLength": 8, "maxLength": 128 } },
+      "CorrelationId": { "description": "Identificador da jornada propagado entre componentes.", "schema": { "type": "string", "minLength": 8, "maxLength": 128 } },
+      "RetryAfter": { "description": "Segundos até nova tentativa.", "schema": { "type": "integer", "minimum": 1 } }
+    },
+    "parameters": {
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "description": "Chave única por intenção; reutilização com payload diferente gera 409.", "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" } },
+      "CorrelationId": { "name": "X-Correlation-Id", "in": "header", "required": false, "schema": { "type": "string", "minLength": 8, "maxLength": 128 } },
+      "PaymentSimulation": { "name": "X-Simulation-Scenario", "in": "header", "required": false, "description": "Somente sandbox fake.", "schema": { "type": "string", "enum": ["success", "failure", "timeout", "fraud", "chargeback"], "default": "success" }, "examples": { "success": { "summary": "Fluxo aprovado", "value": "success" }, "failure": { "summary": "Falha do provider fake", "value": "failure" }, "timeout": { "summary": "Resultado temporariamente indeterminado", "value": "timeout" }, "fraud": { "summary": "Autorização rejeitada por fraude simulada", "value": "fraud" }, "chargeback": { "summary": "Captura seguida de chargeback assíncrono simulado", "value": "chargeback" } } },
+      "InvoiceSimulation": { "name": "X-Simulation-Scenario", "in": "header", "required": false, "description": "Somente sandbox fake.", "schema": { "type": "string", "enum": ["authorized", "rejected", "unavailable"], "default": "authorized" }, "examples": { "authorized": { "summary": "Documento fake autorizado", "value": "authorized" }, "rejected": { "summary": "Documento fake rejeitado com motivo", "value": "rejected" }, "unavailable": { "summary": "Emissor fake indisponível e elegível a retry", "value": "unavailable" } } },
+      "NotificationSimulation": { "name": "X-Simulation-Scenario", "in": "header", "required": false, "description": "Controla provider fake e retries.", "schema": { "type": "string", "enum": ["success", "failure", "timeout"], "default": "success" }, "examples": { "success": { "summary": "Envio fake concluído", "value": "success" }, "failure": { "summary": "Falha permanente fake", "value": "failure" }, "timeout": { "summary": "Timeout fake com retry controlado", "value": "timeout" } } },
+      "PageSize": { "name": "page[size]", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+      "PageAfter": { "name": "page[after]", "in": "query", "schema": { "type": "string", "maxLength": 512 } },
+      "Sort": { "name": "sort", "in": "query", "description": "Campos allowlisted; prefixo - indica ordem descendente.", "schema": { "type": "string", "example": "-createdAt" } },
+      "ChargeStatusFilter": { "name": "filter[status]", "in": "query", "schema": { "$ref": "#/components/schemas/ChargeStatus" } },
+      "InvoiceStatusFilter": { "name": "filter[status]", "in": "query", "schema": { "$ref": "#/components/schemas/InvoiceStatus" } },
+      "NotificationStatusFilter": { "name": "filter[status]", "in": "query", "schema": { "$ref": "#/components/schemas/NotificationStatus" } },
+      "ChargeId": { "name": "chargeId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^chg_[A-Za-z0-9]+$" } },
+      "InvoiceId": { "name": "invoiceId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^inv_[A-Za-z0-9]+$" } },
+      "NotificationId": { "name": "notificationId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^ntf_[A-Za-z0-9]+$" } },
+      "WebhookEndpointId": { "name": "endpointId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^whe_[A-Za-z0-9]+$" } },
+      "WebhookEventId": { "name": "X-MrCoti-Event-Id", "in": "header", "required": true, "schema": { "type": "string" } },
+      "WebhookTimestamp": { "name": "X-MrCoti-Timestamp", "in": "header", "required": true, "schema": { "type": "string", "format": "date-time" } },
+      "WebhookSignature": { "name": "X-MrCoti-Signature", "in": "header", "required": true, "schema": { "type": "string", "pattern": "^v1=[a-f0-9]+$" } }
+    },
+    "pathItems": {
+      "SendEmail": {
+        "post": {
+        "tags": ["Notifications"], "operationId": "sendFakeEmail", "summary": "Enfileira e-mail fake",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/NotificationSimulation" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmailNotificationRequest" } } } },
+        "responses": { "202": { "$ref": "#/components/responses/NotificationAccepted" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/IdempotencyConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "429": { "$ref": "#/components/responses/RateLimited" } }
+        }
+      },
+      "SendSms": {
+        "post": {
+        "tags": ["Notifications"], "operationId": "sendFakeSms", "summary": "Enfileira SMS fake",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/NotificationSimulation" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SmsNotificationRequest" } } } },
+        "responses": { "202": { "$ref": "#/components/responses/NotificationAccepted" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/IdempotencyConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "429": { "$ref": "#/components/responses/RateLimited" } }
+        }
+      },
+      "SendWhatsapp": {
+        "post": {
+        "tags": ["Notifications"], "operationId": "sendFakeWhatsapp", "summary": "Enfileira WhatsApp fake",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }, { "$ref": "#/components/parameters/CorrelationId" }, { "$ref": "#/components/parameters/NotificationSimulation" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WhatsappNotificationRequest" } } } },
+        "responses": { "202": { "$ref": "#/components/responses/NotificationAccepted" }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "409": { "$ref": "#/components/responses/IdempotencyConflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "429": { "$ref": "#/components/responses/RateLimited" } }
+        }
+      }
+    },
+    "responses": {
+      "ChargeResult": { "description": "Estado atualizado da cobrança.", "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Charge" } } } },
+      "NotificationAccepted": { "description": "Notificação aceita para processamento fake.", "headers": { "Location": { "schema": { "type": "string" } }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Notification" } } } },
+      "BadRequest": { "description": "Sintaxe ou parâmetros inválidos.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Unauthorized": { "description": "Credencial ausente ou inválida.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Forbidden": { "description": "Credencial válida sem permissão/entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "NotFound": { "description": "Recurso inexistente ou invisível no escopo do tenant.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "StateConflict": { "description": "Transição incompatível com o estado atual.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "IdempotencyConflict": { "description": "Chave já usada com payload diferente.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Unprocessable": { "description": "Regra de negócio ou simulação rejeitou a operação.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "RateLimited": { "description": "Limite excedido.", "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "SimulatedTimeout": { "description": "Timeout fictício determinístico.", "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" }, "example": { "type": "https://docs.mrcoti.invalid/problems/simulated-timeout", "title": "Simulated timeout", "status": 504, "code": "SIMULATED_TIMEOUT", "requestId": "req_01JEXAMPLE" } } } },
+      "SimulatedUnavailable": { "description": "Indisponibilidade fictícia determinística.", "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+    },
+    "schemas": {
+      "Money": { "type": "object", "additionalProperties": false, "required": ["amount", "currency"], "properties": { "amount": { "type": "string", "pattern": "^-?[0-9]+\\.[0-9]{2,4}$", "example": "125.90" }, "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "example": "BRL" } } },
+      "ChargeStatus": { "type": "string", "enum": ["PENDING", "AUTHORIZED", "CAPTURED", "CANCELLED", "REFUNDED", "PARTIALLY_REFUNDED", "FAILED", "FRAUD_REJECTED", "CHARGEBACK"] },
+      "Charge": { "type": "object", "additionalProperties": false, "required": ["id", "externalReference", "amount", "status", "simulationScenario", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "externalReference": { "type": "string" }, "amount": { "$ref": "#/components/schemas/Money" }, "refundedAmount": { "$ref": "#/components/schemas/Money" }, "status": { "$ref": "#/components/schemas/ChargeStatus" }, "simulationScenario": { "type": "string", "enum": ["success", "failure", "timeout", "fraud", "chargeback"] }, "failureCode": { "type": ["string", "null"] }, "metadata": { "$ref": "#/components/schemas/Metadata" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "CreateChargeRequest": { "type": "object", "additionalProperties": false, "required": ["externalReference", "amount"], "properties": { "externalReference": { "type": "string", "minLength": 1, "maxLength": 128 }, "amount": { "$ref": "#/components/schemas/Money" }, "captureMode": { "type": "string", "enum": ["MANUAL", "AUTOMATIC"], "default": "MANUAL" }, "metadata": { "$ref": "#/components/schemas/Metadata" } } },
+      "PaymentActionRequest": { "type": "object", "additionalProperties": false, "properties": { "amount": { "$ref": "#/components/schemas/Money" }, "reason": { "type": "string", "maxLength": 500 } } },
+      "RefundRequest": { "type": "object", "additionalProperties": false, "required": ["amount", "reason"], "properties": { "amount": { "$ref": "#/components/schemas/Money" }, "reason": { "type": "string", "minLength": 3, "maxLength": 500 } } },
+      "ReasonRequest": { "type": "object", "additionalProperties": false, "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 3, "maxLength": 500 } } },
+      "RejectInvoiceRequest": { "type": "object", "additionalProperties": false, "required": ["code", "reason"], "properties": { "code": { "type": "string", "minLength": 1, "maxLength": 64, "example": "FAKE_SCHEMA_REJECTION" }, "reason": { "type": "string", "minLength": 3, "maxLength": 500, "example": "Rejeição sintética para teste de integração." } } },
+      "InvoiceStatus": { "type": "string", "enum": ["PROCESSING", "AUTHORIZED", "REJECTED", "CANCELLATION_PENDING", "CANCELLED", "FAILED"] },
+      "InvoiceItem": { "type": "object", "additionalProperties": false, "required": ["description", "quantity", "unitAmount"], "properties": { "description": { "type": "string", "minLength": 1, "maxLength": 250 }, "quantity": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,4})?$" }, "unitAmount": { "$ref": "#/components/schemas/Money" } } },
+      "CreateInvoiceRequest": { "type": "object", "additionalProperties": false, "required": ["externalReference", "issuer", "recipient", "items", "total"], "properties": { "externalReference": { "type": "string", "maxLength": 128 }, "issuer": { "$ref": "#/components/schemas/FakeParty" }, "recipient": { "$ref": "#/components/schemas/FakeParty" }, "items": { "type": "array", "minItems": 1, "maxItems": 500, "items": { "$ref": "#/components/schemas/InvoiceItem" } }, "total": { "$ref": "#/components/schemas/Money" }, "metadata": { "$ref": "#/components/schemas/Metadata" } } },
+      "FakeParty": { "type": "object", "additionalProperties": false, "required": ["name", "fakeTaxId"], "properties": { "name": { "type": "string", "maxLength": 200 }, "fakeTaxId": { "type": "string", "description": "Identificador sintético; não enviar documento real.", "maxLength": 32 } } },
+      "Invoice": { "type": "object", "additionalProperties": false, "required": ["id", "externalReference", "status", "total", "simulationScenario", "hasFiscalValue", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "externalReference": { "type": "string" }, "status": { "$ref": "#/components/schemas/InvoiceStatus" }, "total": { "$ref": "#/components/schemas/Money" }, "simulationScenario": { "type": "string", "enum": ["authorized", "rejected", "unavailable"] }, "hasFiscalValue": { "type": "boolean", "const": false }, "fakeAccessKey": { "type": ["string", "null"] }, "rejectionCode": { "type": ["string", "null"] }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "NotificationChannel": { "type": "string", "enum": ["EMAIL", "SMS", "WHATSAPP"] },
+      "NotificationStatus": { "type": "string", "enum": ["QUEUED", "PROCESSING", "SENT", "FAILED", "DEAD_LETTER"] },
+      "TemplateData": { "type": "object", "maxProperties": 50, "additionalProperties": { "type": ["string", "number", "boolean", "null"] } },
+      "EmailNotificationRequest": { "type": "object", "additionalProperties": false, "required": ["to", "templateId", "templateData"], "properties": { "to": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "string", "format": "email" } }, "replyTo": { "type": "string", "format": "email" }, "templateId": { "type": "string", "maxLength": 128 }, "templateData": { "$ref": "#/components/schemas/TemplateData" }, "metadata": { "$ref": "#/components/schemas/Metadata" } } },
+      "SmsNotificationRequest": { "type": "object", "additionalProperties": false, "required": ["to", "templateId", "templateData"], "properties": { "to": { "type": "string", "pattern": "^\\+[1-9][0-9]{7,14}$" }, "templateId": { "type": "string", "maxLength": 128 }, "templateData": { "$ref": "#/components/schemas/TemplateData" }, "metadata": { "$ref": "#/components/schemas/Metadata" } } },
+      "WhatsappNotificationRequest": { "type": "object", "additionalProperties": false, "required": ["to", "templateId", "templateData"], "properties": { "to": { "type": "string", "pattern": "^\\+[1-9][0-9]{7,14}$" }, "templateId": { "type": "string", "maxLength": 128 }, "templateData": { "$ref": "#/components/schemas/TemplateData" }, "metadata": { "$ref": "#/components/schemas/Metadata" } } },
+      "Notification": { "type": "object", "additionalProperties": false, "required": ["id", "channel", "status", "provider", "attemptCount", "simulationScenario", "createdAt", "updatedAt"], "properties": { "id": { "type": "string" }, "channel": { "$ref": "#/components/schemas/NotificationChannel" }, "status": { "$ref": "#/components/schemas/NotificationStatus" }, "provider": { "type": "string", "const": "fake" }, "attemptCount": { "type": "integer", "minimum": 0 }, "simulationScenario": { "type": "string", "enum": ["success", "failure", "timeout"] }, "lastErrorCode": { "type": ["string", "null"] }, "metadata": { "$ref": "#/components/schemas/Metadata" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "NotificationLog": { "type": "object", "additionalProperties": false, "required": ["id", "attempt", "status", "occurredAt"], "properties": { "id": { "type": "string" }, "attempt": { "type": "integer", "minimum": 1 }, "status": { "type": "string", "enum": ["STARTED", "SUCCEEDED", "FAILED", "RETRY_SCHEDULED"] }, "errorCode": { "type": ["string", "null"] }, "nextAttemptAt": { "type": ["string", "null"], "format": "date-time" }, "occurredAt": { "type": "string", "format": "date-time" } } },
+      "CreateWebhookEndpointRequest": { "type": "object", "additionalProperties": false, "required": ["url", "eventTypes"], "properties": { "url": { "type": "string", "format": "uri", "pattern": "^https://" }, "eventTypes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["payment.status.changed.v1", "invoice.status.changed.v1", "notification.status.changed.v1"] } }, "description": { "type": "string", "maxLength": 250 } } },
+      "WebhookEndpoint": { "type": "object", "additionalProperties": false, "required": ["id", "url", "eventTypes", "status", "createdAt"], "properties": { "id": { "type": "string" }, "url": { "type": "string", "format": "uri" }, "eventTypes": { "type": "array", "items": { "type": "string" } }, "status": { "type": "string", "enum": ["ACTIVE", "DISABLED"] }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "WebhookEndpointCreated": { "allOf": [{ "$ref": "#/components/schemas/WebhookEndpoint" }, { "type": "object", "required": ["signingSecret"], "properties": { "signingSecret": { "type": "string", "description": "Exibido uma única vez." } } }] },
+      "WebhookEnvelope": { "type": "object", "additionalProperties": false, "required": ["id", "type", "version", "occurredAt", "tenantId", "correlationId", "data"], "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "version": { "type": "integer", "minimum": 1 }, "occurredAt": { "type": "string", "format": "date-time" }, "tenantId": { "type": "string" }, "correlationId": { "type": "string" }, "data": { "type": "object" } } },
+      "PaymentWebhook": { "allOf": [{ "$ref": "#/components/schemas/WebhookEnvelope" }, { "type": "object", "properties": { "type": { "const": "payment.status.changed" }, "data": { "$ref": "#/components/schemas/Charge" } } }] },
+      "InvoiceWebhook": { "allOf": [{ "$ref": "#/components/schemas/WebhookEnvelope" }, { "type": "object", "properties": { "type": { "const": "invoice.status.changed" }, "data": { "$ref": "#/components/schemas/Invoice" } } }] },
+      "NotificationWebhook": { "allOf": [{ "$ref": "#/components/schemas/WebhookEnvelope" }, { "type": "object", "properties": { "type": { "const": "notification.status.changed" }, "data": { "$ref": "#/components/schemas/Notification" } } }] },
+      "Metadata": { "type": "object", "maxProperties": 25, "additionalProperties": { "type": "string", "maxLength": 500 } },
+      "PageMeta": { "type": "object", "required": ["size", "hasMore"], "properties": { "size": { "type": "integer" }, "hasMore": { "type": "boolean" }, "nextCursor": { "type": ["string", "null"] } } },
+      "ChargePage": { "type": "object", "required": ["data", "meta"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Charge" } }, "meta": { "$ref": "#/components/schemas/PageMeta" } } },
+      "InvoicePage": { "type": "object", "required": ["data", "meta"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Invoice" } }, "meta": { "$ref": "#/components/schemas/PageMeta" } } },
+      "NotificationPage": { "type": "object", "required": ["data", "meta"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } }, "meta": { "$ref": "#/components/schemas/PageMeta" } } },
+      "NotificationLogPage": { "type": "object", "required": ["data", "meta"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/NotificationLog" } }, "meta": { "$ref": "#/components/schemas/PageMeta" } } },
+      "WebhookEndpointPage": { "type": "object", "required": ["data", "meta"], "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/WebhookEndpoint" } }, "meta": { "$ref": "#/components/schemas/PageMeta" } } },
+      "Violation": { "type": "object", "required": ["field", "code", "message"], "properties": { "field": { "type": "string" }, "code": { "type": "string" }, "message": { "type": "string" } } },
+      "Problem": { "type": "object", "additionalProperties": false, "required": ["type", "title", "status", "code", "requestId"], "properties": { "type": { "type": "string", "format": "uri-reference" }, "title": { "type": "string" }, "status": { "type": "integer", "minimum": 400, "maximum": 599 }, "code": { "type": "string" }, "detail": { "type": "string" }, "instance": { "type": "string" }, "requestId": { "type": "string" }, "violations": { "type": "array", "items": { "$ref": "#/components/schemas/Violation" } } } }
+    }
+  }
+}
