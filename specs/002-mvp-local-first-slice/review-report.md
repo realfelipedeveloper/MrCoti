@@ -16,7 +16,7 @@ autorizada após CHK024 e segue limitada a dados sintéticos, Docker local, sem
 produção, sem AWS real, sem providers reais e sem microsserviços.
 
 CHK024 foi satisfeito em 2026-07-11 por aprovação explícita de Felipe Almeida,
-registrada em `approval-record.md`. T001–T027 foram concluídas nesta revisão.
+registrada em `approval-record.md`. T001–T028 foram concluídas nesta revisão.
 CHK048 da fundação permanece `PENDING LEGAL REVIEW` apenas como gatilho futuro para
 produção/tratamento real de dados pessoais e não bloqueia a implementação dev/local
 com dados sintéticos.
@@ -28,7 +28,7 @@ com dados sintéticos.
 | Arquivos obrigatórios da spec 002 | PASSA                                                                                                                                                       |
 | Requisitos locais                 | PASSA: RF-001–016, RNF-001–010, RSD-001–010                                                                                                                 |
 | Critérios de sucesso              | PASSA: CS-001–008                                                                                                                                           |
-| Tasks planejadas                  | PASSA: T001–T027 concluídas; T028–T053 abertas em ordem                                                                                                     |
+| Tasks planejadas                  | PASSA: T001–T028 concluídas; T029–T053 abertas em ordem                                                                                                     |
 | Checklist                         | PASSA: CHK001–CHK028 sequenciais, todos fechados                                                                                                            |
 | OpenAPI                           | PASSA: JSON válido, 114 refs internas válidas e 16 operations                                                                                               |
 | Escopo proibido                   | PASSA: sem `local-prod`, produção, AWS real, providers reais, dados reais, billing real, fiscalidade real, microsserviços ou containers Mr Coti em execução |
@@ -902,8 +902,55 @@ Validações executadas:
 | `npm run prisma:validate --workspace @mrcoti/api`                                         | PASSA com `DATABASE_URL` temporária de placeholder             |
 | `npm run verify`                                                                          | PASSA: lint, format, typecheck, 13 suítes/58 testes e contrato |
 
+## Bill e FakePayment domínio/persistência T028 — 2026-08-14
+
+Modelo de domínio e persistência de fechamento criado para representar `Bill` e
+`FakePayment` sem coletar dados financeiros reais, preparando o cálculo e o fluxo
+transacional das próximas tasks.
+
+Artefatos:
+
+| Área                         | Evidência                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| Entidade Bill                | `apps/api/src/modules/operation/domain/bill.entity.ts`                             |
+| Invariantes Bill             | `apps/api/src/modules/operation/domain/bill-invariants.ts`                         |
+| Testes Bill                  | `apps/api/src/modules/operation/domain/bill-invariants.spec.ts`                    |
+| Entidade FakePayment         | `apps/api/src/modules/fake-payments/domain/fake-payment.entity.ts`                 |
+| Invariantes FakePayment      | `apps/api/src/modules/fake-payments/domain/fake-payment-invariants.ts`             |
+| Testes FakePayment           | `apps/api/src/modules/fake-payments/domain/fake-payment-invariants.spec.ts`        |
+| Persistência planejada local | `apps/api/prisma/schema.prisma` com `Bill`, `FakePayment` e enums de estado/método |
+
+Decisões implementadas:
+
+- `Bill` é tenant-aware e unit-aware, vinculada a uma única comanda por `tabId`.
+- Valores monetários são sempre inteiros em centavos, não negativos e limitados ao
+  intervalo seguro usado no schema.
+- `totalCents` segue `subtotalCents - discountCents + serviceFeeCents` e não pode
+  ficar negativo.
+- `paidCents` não pode exceder `totalCents`.
+- Estados de Bill seguem `DRAFT -> PAYMENT_PENDING -> PAID -> CLOSED`, com ramo
+  `PAYMENT_PENDING -> PAYMENT_FAILED -> PAYMENT_PENDING`.
+- `PAID` e `CLOSED` exigem pagamento integral.
+- `FakePayment` usa somente métodos `CASH_FAKE` e `CARD_FAKE`, cenário simulado
+  `APPROVED`, `DECLINED` ou `FAILED` e `fake=true`.
+- A máquina de estado de `FakePayment` permite `REQUESTED -> APPROVED -> RECORDED`,
+  `REQUESTED -> DECLINED` ou `REQUESTED -> FAILED`.
+- Campos de cartão, PIX, documento, token, credencial de provider, conta bancária e
+  autorização real são rejeitados mesmo se aparecerem em payloads inseguros/nested.
+- O schema Prisma não adiciona gateway, adquirente, cartão, PIX, cobrança real,
+  fiscalidade real, provedor externo ou dado pessoal real.
+
+Validações executadas:
+
+| Comando                                                                                                                                                                | Resultado                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `npm test -- --runTestsByPath apps/api/src/modules/operation/domain/bill-invariants.spec.ts apps/api/src/modules/fake-payments/domain/fake-payment-invariants.spec.ts` | PASSA: 2 suítes/8 testes                                       |
+| `npm run typecheck`                                                                                                                                                    | PASSA                                                          |
+| `npm run prisma:validate --workspace @mrcoti/api`                                                                                                                      | PASSA com `DATABASE_URL` temporária de placeholder             |
+| `npm run verify`                                                                                                                                                       | PASSA: lint, format, typecheck, 15 suítes/66 testes e contrato |
+
 ## Próxima ação recomendada
 
-Prosseguir para T028 em diante, em ordem, respeitando `approval-record.md`, sem
+Prosseguir para T029 em diante, em ordem, respeitando `approval-record.md`, sem
 `local-prod`, produção, AWS real, provedores reais, dados reais, microsserviços ou
 serviços locais desnecessários.

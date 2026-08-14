@@ -12,6 +12,8 @@ export type AuditEntryId = EntityId;
 export type RestaurantTableId = EntityId;
 export type TabId = EntityId;
 export type OrderItemId = EntityId;
+export type BillId = EntityId;
+export type FakePaymentId = EntityId;
 
 export interface Timestamped {
   readonly createdAt: Date;

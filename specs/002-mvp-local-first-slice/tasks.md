@@ -2,8 +2,8 @@
 
 **Produto:** Mr Coti  
 **Especificação:** `specs/002-mvp-local-first-slice/spec.md`  
-**Estado:** aprovada com condições; T001–T027 concluídas; implementação deve seguir a
-ordem planejada a partir de T028
+**Estado:** aprovada com condições; T001–T028 concluídas; implementação deve seguir a
+ordem planejada a partir de T029
 
 ## Convenções
 
@@ -155,8 +155,14 @@ ordem planejada a partir de T028
 
 ## Fase 5 — Fechamento e pagamento fake (US-04)
 
-- [ ] T028 [US-04] Modelar Bill e FakePayment sem dados financeiros reais — RF-010–011,
-      RSD-009 — domínio/persistência.
+- [x] T028 [US-04] Modelar Bill e FakePayment sem dados financeiros reais — RF-010–011,
+      RSD-009 — domínio/persistência. **Evidência:**
+      `apps/api/src/modules/operation/domain/bill.entity.ts`,
+      `apps/api/src/modules/operation/domain/bill-invariants.ts`,
+      `apps/api/src/modules/fake-payments/domain/fake-payment.entity.ts`,
+      `apps/api/src/modules/fake-payments/domain/fake-payment-invariants.ts`,
+      `apps/api/prisma/schema.prisma` e `review-report.md`, seção “Bill e
+      FakePayment domínio/persistência T028 — 2026-08-14”.
 - [ ] T029 [US-04] Implementar cálculo em centavos de subtotal, desconto, taxa, total
       e saldo — RF-010, CS-004 — testes unitários.
 - [ ] T030 [US-04] Implementar fechamento transacional da comanda — RF-011–014,
