@@ -1,0 +1,7 @@
+{
+  "name": "@mrcoti/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contratos OpenAPI e artefatos compartilhados do Mr Coti.",
+  "license": "UNLICENSED"
+}
