@@ -1,0 +1,126 @@
+@startuml
+title Mr Coti — Domínio SaaS e multi-tenancy
+hide methods
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+class Tenant <<aggregate root>> {
+  tenant_id
+  name
+  status
+}
+
+class Company <<entity>> {
+  company_id
+  tenant_id
+}
+
+class Unit <<entity>> {
+  unit_id
+  tenant_id
+  company_id
+}
+
+class User <<entity>> {
+  user_id
+  status
+}
+
+class Membership <<entity>> {
+  tenant_id
+  user_id
+  role_id
+}
+
+class Role <<entity>> {
+  role_id
+  tenant_id
+  name
+}
+
+class Permission <<value/reference>> {
+  key
+}
+
+class Plan <<aggregate root>> {
+  plan_id
+  name
+  version
+}
+
+class Subscription <<entity>> {
+  subscription_id
+  tenant_id
+  plan_id
+  status
+}
+
+class FeatureDefinition <<aggregate root>> {
+  feature_key
+  default_state
+  lifecycle
+}
+
+class PlanEntitlement <<entity>> {
+  plan_id
+  feature_key
+  enabled
+  limit
+  window
+}
+
+class TenantOverride <<entity>> {
+  tenant_id
+  feature_key
+  value
+  reason
+  expires_at
+}
+
+class UsageCounter <<entity>> {
+  tenant_id
+  feature_key
+  window
+  value
+}
+
+class AuditEntry <<entity>> {
+  tenant_id
+  actor_id
+  action
+  occurred_at
+}
+
+Tenant "1" *-- "1..*" Company
+Company "1" *-- "1..*" Unit
+Tenant "1" *-- "0..*" Membership
+User "1" -- "0..*" Membership
+Membership "0..*" --> "1" Role
+Role "0..*" -- "0..*" Permission
+Tenant "1" *-- "0..*" Role
+
+Tenant "1" *-- "1" Subscription
+Subscription "0..*" --> "1" Plan
+Plan "1" *-- "0..*" PlanEntitlement
+PlanEntitlement "0..*" --> "1" FeatureDefinition
+Tenant "1" *-- "0..*" TenantOverride
+TenantOverride "0..*" --> "1" FeatureDefinition
+Tenant "1" *-- "0..*" UsageCounter
+UsageCounter "0..*" --> "1" FeatureDefinition
+Tenant "1" *-- "0..*" AuditEntry
+
+note right of Tenant
+  Fronteira comercial,
+  de segurança e dados
+end note
+
+note bottom of Membership
+  Escopos adicionais de empresa/unidade
+  podem restringir a associação.
+end note
+
+note bottom of TenantOverride
+  Kill switch de ambiente prevalece.
+  Feature habilitada ainda exige RBAC.
+end note
+@enduml

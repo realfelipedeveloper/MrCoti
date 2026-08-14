@@ -1,0 +1,52 @@
+@startuml
+title Mr Coti — Visão de containers
+left to right direction
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor "Usuários do tenant" as User
+actor "Operação SaaS" as Ops
+
+node "Mr Coti — ambiente de execução" as Runtime {
+  component "Aplicação Web\nNext.js + TypeScript\nApp Router / Tailwind CSS" as Web #E8F4FF
+  component "API Backend\nNestJS + TypeScript\nMonólito modular / REST" as Api #DDEEFF
+  component "Workers\nNestJS + BullMQ\nOutbox, integrações e projeções" as Workers #DDEEFF
+
+  database "MySQL 8+\nFonte de verdade multi-tenant\nPrisma ORM" as MySQL #FFF4D6
+  queue "Redis\nBullMQ, cache e rate limiting" as Redis #FFE5E5
+
+  component "Adaptador de\npagamento fake" as FakePayment #E8FFE8
+  component "Adaptador de\nnota fake" as FakeInvoice #E8FFE8
+  component "Providers fake\nde notificação" as FakeNotification #E8FFE8
+}
+
+cloud "Serviços externos futuros\npor adaptadores e ADRs" as External
+
+User --> Web : HTTPS
+Ops --> Web : HTTPS / RBAC privilegiado
+Web --> Api : REST/JSON versionado\nJWT, request-id, correlation-id
+Api --> MySQL : Prisma / transações
+Api --> Redis : cache e enqueue
+Workers --> Redis : consome jobs
+Workers --> MySQL : outbox, estado e idempotência
+Api --> FakePayment : porta interna
+Api --> FakeInvoice : porta interna
+Workers --> FakeNotification : porta interna
+FakePayment ..> External : substituição futura
+FakeInvoice ..> External : substituição futura
+FakeNotification ..> External : substituição futura
+
+note bottom of Api
+  Core SaaS, Identidade e Acesso, Cardápio,
+  Operação e Pedidos, Estoque, Financeiro,
+  Clientes, Reservas, Relatórios,
+  Integrações e Auditoria
+
+  Um único implantável; módulos não são microsserviços.
+end note
+
+note bottom of MySQL
+  Single Database + tenant_id
+  Dados operacionais sempre tenant-aware
+end note
+@enduml

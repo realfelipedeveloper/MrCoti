@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum IdentityUserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CategoryStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  AVAILABLE
+  UNAVAILABLE
+  INACTIVE
+}
+
+enum RestaurantTableStatus {
+  AVAILABLE
+  OCCUPIED
+  BLOCKED
+}
+
+enum TabStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Role {
+  TENANT_OWNER
+  UNIT_MANAGER
+  WAITER
+  CASHIER
+  AUDITOR
+}
+
+model IdentityUser {
+  id             String             @id @default(cuid()) @db.VarChar(191)
+  displayName    String             @map("display_name") @db.VarChar(120)
+  syntheticEmail String             @unique @map("synthetic_email") @db.VarChar(191)
+  passwordHash   String             @map("password_hash") @db.VarChar(255)
+  status         IdentityUserStatus @default(ACTIVE)
+  memberships    Membership[]
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("identity_users")
+}
+
+model Tenant {
+  id              String           @id @default(cuid()) @db.VarChar(191)
+  name            String           @db.VarChar(160)
+  status          TenantStatus     @default(ACTIVE)
+  planCode        String           @map("plan_code") @db.VarChar(64)
+  companies       Company[]
+  units           Unit[]
+  memberships     Membership[]
+  roleAssignments RoleAssignment[]
+  categories      Category[]
+  products        Product[]
+  tables          RestaurantTable[]
+  tabs            Tab[]
+  orderItems      OrderItem[]
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("tenants")
+}
+
+model Company {
+  id        String             @id @default(cuid()) @db.VarChar(191)
+  tenantId  String             @map("tenant_id") @db.VarChar(191)
+  name      String             @db.VarChar(160)
+  status    OrganizationStatus @default(ACTIVE)
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  units     Unit[]
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@map("companies")
+}
+
+model Unit {
+  id              String             @id @default(cuid()) @db.VarChar(191)
+  tenantId        String             @map("tenant_id") @db.VarChar(191)
+  companyId       String             @map("company_id") @db.VarChar(191)
+  name            String             @db.VarChar(160)
+  status          OrganizationStatus @default(ACTIVE)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  roleAssignments RoleAssignment[]
+  categories      Category[]
+  products        Product[]
+  tables          RestaurantTable[]
+  tabs            Tab[]
+  orderItems      OrderItem[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([tenantId, companyId])
+  @@index([tenantId, status])
+  @@map("units")
+}
+
+model Membership {
+  id              String             @id @default(cuid()) @db.VarChar(191)
+  tenantId        String             @map("tenant_id") @db.VarChar(191)
+  userId          String             @map("user_id") @db.VarChar(191)
+  status          MembershipStatus   @default(ACTIVE)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user            IdentityUser       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roleAssignments RoleAssignment[]
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@unique([tenantId, userId])
+  @@index([tenantId, status])
+  @@map("memberships")
+}
+
+model RoleAssignment {
+  id           String     @id @default(cuid()) @db.VarChar(191)
+  tenantId     String     @map("tenant_id") @db.VarChar(191)
+  membershipId String     @map("membership_id") @db.VarChar(191)
+  role         Role
+  unitId       String?    @map("unit_id") @db.VarChar(191)
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  unit         Unit?      @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@index([tenantId, membershipId])
+  @@index([tenantId, unitId])
+  @@index([tenantId, role])
+  @@map("role_assignments")
+}
+
+model Category {
+  id        String         @id @default(cuid()) @db.VarChar(191)
+  tenantId  String         @map("tenant_id") @db.VarChar(191)
+  unitId    String         @map("unit_id") @db.VarChar(191)
+  name      String         @db.VarChar(80)
+  status    CategoryStatus @default(ACTIVE)
+  sortOrder Int            @default(0) @map("sort_order")
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit      Unit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  products  Product[]
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, status, sortOrder])
+  @@index([tenantId, unitId, name])
+  @@map("categories")
+}
+
+model Product {
+  id         String        @id @default(cuid()) @db.VarChar(191)
+  tenantId   String        @map("tenant_id") @db.VarChar(191)
+  unitId     String        @map("unit_id") @db.VarChar(191)
+  categoryId String        @map("category_id") @db.VarChar(191)
+  name       String        @db.VarChar(120)
+  priceCents Int           @map("price_cents")
+  status     ProductStatus @default(AVAILABLE)
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit       Unit          @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  category   Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  orderItems OrderItem[]
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, categoryId, status])
+  @@index([tenantId, unitId, name])
+  @@map("products")
+}
+
+model RestaurantTable {
+  id        String                @id @default(cuid()) @db.VarChar(191)
+  tenantId  String                @map("tenant_id") @db.VarChar(191)
+  unitId    String                @map("unit_id") @db.VarChar(191)
+  code      String                @db.VarChar(20)
+  status    RestaurantTableStatus @default(AVAILABLE)
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit      Unit                  @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  tabs      Tab[]
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  @@unique([tenantId, unitId, code])
+  @@index([tenantId, unitId, status])
+  @@map("restaurant_tables")
+}
+
+model Tab {
+  id         String          @id @default(cuid()) @db.VarChar(191)
+  tenantId   String          @map("tenant_id") @db.VarChar(191)
+  unitId     String          @map("unit_id") @db.VarChar(191)
+  tableId    String          @map("table_id") @db.VarChar(191)
+  status     TabStatus       @default(OPEN)
+  openedBy   String          @map("opened_by") @db.VarChar(191)
+  closedAt   DateTime?       @map("closed_at")
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit       Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  table      RestaurantTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+  orderItems OrderItem[]
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, tableId, status])
+  @@index([tenantId, unitId, status])
+  @@map("tabs")
+}
+
+model OrderItem {
+  id                  String          @id @default(cuid()) @db.VarChar(191)
+  tenantId            String          @map("tenant_id") @db.VarChar(191)
+  unitId              String          @map("unit_id") @db.VarChar(191)
+  tabId               String          @map("tab_id") @db.VarChar(191)
+  productId           String          @map("product_id") @db.VarChar(191)
+  productNameSnapshot String          @map("product_name_snapshot") @db.VarChar(120)
+  quantity            Int
+  unitPriceCents      Int             @map("unit_price_cents")
+  status              OrderItemStatus @default(ACTIVE)
+  cancelReason        String?         @map("cancel_reason") @db.VarChar(160)
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit                Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  tab                 Tab             @relation(fields: [tabId], references: [id], onDelete: Restrict)
+  product             Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  @@index([tenantId, unitId, tabId, status])
+  @@index([tenantId, productId])
+  @@map("order_items")
+}
