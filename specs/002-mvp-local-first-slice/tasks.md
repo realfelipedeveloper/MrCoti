@@ -2,8 +2,8 @@
 
 **Produto:** Mr Coti  
 **Especificação:** `specs/002-mvp-local-first-slice/spec.md`  
-**Estado:** aprovada com condições; T001–T029 concluídas; implementação deve seguir a
-ordem planejada a partir de T030
+**Estado:** aprovada com condições; T001–T030 concluídas; implementação deve seguir a
+ordem planejada a partir de T031
 
 ## Convenções
 
@@ -169,8 +169,12 @@ ordem planejada a partir de T030
       `apps/api/src/modules/operation/domain/bill-calculation.spec.ts` e
       `review-report.md`, seção “Cálculo de fechamento em centavos T029 —
       2026-08-14”.
-- [ ] T030 [US-04] Implementar fechamento transacional da comanda — RF-011–014,
-      RNF-003 — testes integração.
+- [x] T030 [US-04] Implementar fechamento transacional da comanda — RF-011–014,
+      RNF-003 — testes integração. **Evidência:**
+      `apps/api/src/modules/operation/application/close-tab.service.ts`,
+      `apps/api/src/modules/operation/application/close-tab.service.spec.ts` e
+      `review-report.md`, seção “Fechamento transacional de comanda T030 —
+      2026-08-14”.
 - [ ] T031 [US-04] Implementar idempotência do fechamento com replay seguro e conflito
       por payload divergente — RF-012, CS-003 — testes idempotência.
 - [ ] T032 [US-04] Implementar rota `POST /tabs/{tabId}/close` conforme OpenAPI —

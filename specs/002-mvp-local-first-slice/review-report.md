@@ -16,7 +16,7 @@ autorizada após CHK024 e segue limitada a dados sintéticos, Docker local, sem
 produção, sem AWS real, sem providers reais e sem microsserviços.
 
 CHK024 foi satisfeito em 2026-07-11 por aprovação explícita de Felipe Almeida,
-registrada em `approval-record.md`. T001–T029 foram concluídas nesta revisão.
+registrada em `approval-record.md`. T001–T030 foram concluídas nesta revisão.
 CHK048 da fundação permanece `PENDING LEGAL REVIEW` apenas como gatilho futuro para
 produção/tratamento real de dados pessoais e não bloqueia a implementação dev/local
 com dados sintéticos.
@@ -28,7 +28,7 @@ com dados sintéticos.
 | Arquivos obrigatórios da spec 002 | PASSA                                                                                                                                                       |
 | Requisitos locais                 | PASSA: RF-001–016, RNF-001–010, RSD-001–010                                                                                                                 |
 | Critérios de sucesso              | PASSA: CS-001–008                                                                                                                                           |
-| Tasks planejadas                  | PASSA: T001–T029 concluídas; T030–T053 abertas em ordem                                                                                                     |
+| Tasks planejadas                  | PASSA: T001–T030 concluídas; T031–T053 abertas em ordem                                                                                                     |
 | Checklist                         | PASSA: CHK001–CHK028 sequenciais, todos fechados                                                                                                            |
 | OpenAPI                           | PASSA: JSON válido, 114 refs internas válidas e 16 operations                                                                                               |
 | Escopo proibido                   | PASSA: sem `local-prod`, produção, AWS real, providers reais, dados reais, billing real, fiscalidade real, microsserviços ou containers Mr Coti em execução |
@@ -986,8 +986,49 @@ Validações executadas:
 | `npm run prisma:validate --workspace @mrcoti/api`                                                                                                           | PASSA com `DATABASE_URL` temporária de placeholder             |
 | `npm run verify`                                                                                                                                            | PASSA: lint, format, typecheck, 16 suítes/73 testes e contrato |
 
+## Fechamento transacional de comanda T030 — 2026-08-14
+
+Serviço de aplicação criado para fechar a comanda com pagamento fake sem antecipar
+rota HTTP, idempotência, auditoria ou outbox das próximas tasks. A implementação usa
+transação lógica em memória: valida e calcula tudo antes de persistir qualquer
+mudança efetiva.
+
+Artefatos:
+
+| Área                         | Evidência                                                              |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| Serviço de fechamento        | `apps/api/src/modules/operation/application/close-tab.service.ts`      |
+| Testes de integração local   | `apps/api/src/modules/operation/application/close-tab.service.spec.ts` |
+| Stores em memória            | `InMemoryBillStore`, `InMemoryFakePaymentStore`                        |
+| Export aplicação de operação | `apps/api/src/modules/operation/application/index.ts`                  |
+
+Decisões implementadas:
+
+- Fechamento aprovado exige comanda `OPEN`, mesa existente, item ativo e pagamento
+  fake com valor exatamente igual ao total calculado.
+- Pagamento fake `APPROVED` cria `Bill` `CLOSED`, cria `FakePayment` `RECORDED`,
+  fecha a comanda e libera a mesa.
+- Pagamento fake `DECLINED` ou `FAILED` cria conta consultável em
+  `PAYMENT_FAILED`, registra pagamento fake no estado correspondente e mantém
+  comanda/mesa abertas para tentativa futura.
+- Tentativas com comanda inexistente, outro tenant, comanda não aberta, comanda sem
+  item ativo, total inválido, valor divergente ou método fake inválido são negadas
+  sem escrita parcial.
+- Um fechamento efetivo não duplica `Bill`/`FakePayment` para a mesma comanda.
+- Nenhum gateway, cartão, PIX real, fiscalidade real, provider externo, dado real,
+  auditoria ou outbox foi introduzido nesta task.
+
+Validações executadas:
+
+| Comando                                                                                                                                                                                                                                      | Resultado                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `npm test -- --runTestsByPath apps/api/src/modules/operation/application/close-tab.service.spec.ts apps/api/src/modules/operation/domain/bill-calculation.spec.ts apps/api/src/modules/fake-payments/domain/fake-payment-invariants.spec.ts` | PASSA: 3 suítes/17 testes                                      |
+| `npm run typecheck`                                                                                                                                                                                                                          | PASSA                                                          |
+| `npm run prisma:validate --workspace @mrcoti/api`                                                                                                                                                                                            | PASSA com `DATABASE_URL` temporária de placeholder             |
+| `npm run verify`                                                                                                                                                                                                                             | PASSA: lint, format, typecheck, 17 suítes/79 testes e contrato |
+
 ## Próxima ação recomendada
 
-Prosseguir para T030 em diante, em ordem, respeitando `approval-record.md`, sem
+Prosseguir para T031 em diante, em ordem, respeitando `approval-record.md`, sem
 `local-prod`, produção, AWS real, provedores reais, dados reais, microsserviços ou
 serviços locais desnecessários.
