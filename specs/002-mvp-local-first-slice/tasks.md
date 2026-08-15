@@ -2,8 +2,8 @@
 
 **Produto:** Mr Coti  
 **Especificação:** `specs/002-mvp-local-first-slice/spec.md`  
-**Estado:** aprovada com condições; T001–T028 concluídas; implementação deve seguir a
-ordem planejada a partir de T029
+**Estado:** aprovada com condições; T001–T029 concluídas; implementação deve seguir a
+ordem planejada a partir de T030
 
 ## Convenções
 
@@ -163,8 +163,12 @@ ordem planejada a partir de T029
       `apps/api/src/modules/fake-payments/domain/fake-payment-invariants.ts`,
       `apps/api/prisma/schema.prisma` e `review-report.md`, seção “Bill e
       FakePayment domínio/persistência T028 — 2026-08-14”.
-- [ ] T029 [US-04] Implementar cálculo em centavos de subtotal, desconto, taxa, total
-      e saldo — RF-010, CS-004 — testes unitários.
+- [x] T029 [US-04] Implementar cálculo em centavos de subtotal, desconto, taxa, total
+      e saldo — RF-010, CS-004 — testes unitários. **Evidência:**
+      `apps/api/src/modules/operation/domain/bill-calculation.ts`,
+      `apps/api/src/modules/operation/domain/bill-calculation.spec.ts` e
+      `review-report.md`, seção “Cálculo de fechamento em centavos T029 —
+      2026-08-14”.
 - [ ] T030 [US-04] Implementar fechamento transacional da comanda — RF-011–014,
       RNF-003 — testes integração.
 - [ ] T031 [US-04] Implementar idempotência do fechamento com replay seguro e conflito
