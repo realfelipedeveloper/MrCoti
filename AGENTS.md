@@ -112,3 +112,29 @@ pendente.
 - Antes de concluir, rode as validações documentais disponíveis e liste riscos/pendências reais.
 
 Os perfis carregáveis pelo Codex ficam em `.codex/agents/`; o catálogo de responsabilidades está em `docs/10-agents/roles.md`.
+
+## Fluxo Git obrigatório
+
+Quando o usuário autorizar commit, push e PR, toda task implementável deve seguir
+este fluxo, sem atalhos:
+
+1. Criar branch curta a partir de `development`, com prefixo `feature/`, `fix/`,
+   `chore/` ou `docs/`.
+2. Ao terminar a task, abrir PR da branch de trabalho para `development`.
+3. Depois que o PR para `development` estiver mergeado, abrir PR
+   `development -> homologation` e mergear essa promoção.
+4. Depois que `homologation` receber a promoção, abrir PR
+   `homologation -> main` e mergear essa promoção.
+
+Regras adicionais:
+
+- Nunca abrir PR de `feature/*`, `fix/*`, `chore/*` ou `docs/*` diretamente para
+  `homologation` ou `main`.
+- Nunca promover `development` direto para `main`.
+- Promoções entre branches longas (`development -> homologation` e
+  `homologation -> main`) devem usar merge commit, não squash/rebase, para preservar
+  ancestralidade e evitar divergência recorrente.
+- PRs de promoção devem ter título e corpo em PT-BR, citar PR de origem,
+  validações executadas e escopo preservado.
+- Se uma promoção conflitar por divergência histórica, fazer reparo explícito via PR,
+  sem force-push e sem reescrever histórico publicado.
