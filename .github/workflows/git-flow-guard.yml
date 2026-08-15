@@ -1,0 +1,54 @@
+name: Git Flow Guard
+
+on:
+  pull_request:
+    branches:
+      - development
+      - homologation
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - edited
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  git-flow-guard:
+    name: git-flow-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar base/head do Git Flow
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          echo "Base: ${BASE_REF}"
+          echo "Head: ${HEAD_REF}"
+
+          case "${BASE_REF}" in
+            development)
+              if [[ "${HEAD_REF}" == feature/* || "${HEAD_REF}" == fix/* || "${HEAD_REF}" == chore/* || "${HEAD_REF}" == docs/* ]]; then
+                exit 0
+              fi
+              ;;
+            homologation)
+              if [[ "${HEAD_REF}" == "development" ]]; then
+                exit 0
+              fi
+              ;;
+            main)
+              if [[ "${HEAD_REF}" == "homologation" ]]; then
+                exit 0
+              fi
+              ;;
+          esac
+
+          echo "::error::Fluxo Git inválido. Use feature/fix/chore/docs -> development, depois development -> homologation, depois homologation -> main."
+          exit 1
