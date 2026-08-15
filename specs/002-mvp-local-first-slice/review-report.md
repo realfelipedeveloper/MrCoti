@@ -16,7 +16,7 @@ autorizada após CHK024 e segue limitada a dados sintéticos, Docker local, sem
 produção, sem AWS real, sem providers reais e sem microsserviços.
 
 CHK024 foi satisfeito em 2026-07-11 por aprovação explícita de Felipe Almeida,
-registrada em `approval-record.md`. T001–T028 foram concluídas nesta revisão.
+registrada em `approval-record.md`. T001–T029 foram concluídas nesta revisão.
 CHK048 da fundação permanece `PENDING LEGAL REVIEW` apenas como gatilho futuro para
 produção/tratamento real de dados pessoais e não bloqueia a implementação dev/local
 com dados sintéticos.
@@ -28,7 +28,7 @@ com dados sintéticos.
 | Arquivos obrigatórios da spec 002 | PASSA                                                                                                                                                       |
 | Requisitos locais                 | PASSA: RF-001–016, RNF-001–010, RSD-001–010                                                                                                                 |
 | Critérios de sucesso              | PASSA: CS-001–008                                                                                                                                           |
-| Tasks planejadas                  | PASSA: T001–T028 concluídas; T029–T053 abertas em ordem                                                                                                     |
+| Tasks planejadas                  | PASSA: T001–T029 concluídas; T030–T053 abertas em ordem                                                                                                     |
 | Checklist                         | PASSA: CHK001–CHK028 sequenciais, todos fechados                                                                                                            |
 | OpenAPI                           | PASSA: JSON válido, 114 refs internas válidas e 16 operations                                                                                               |
 | Escopo proibido                   | PASSA: sem `local-prod`, produção, AWS real, providers reais, dados reais, billing real, fiscalidade real, microsserviços ou containers Mr Coti em execução |
@@ -949,8 +949,45 @@ Validações executadas:
 | `npm run prisma:validate --workspace @mrcoti/api`                                                                                                                      | PASSA com `DATABASE_URL` temporária de placeholder             |
 | `npm run verify`                                                                                                                                                       | PASSA: lint, format, typecheck, 15 suítes/66 testes e contrato |
 
+## Cálculo de fechamento em centavos T029 — 2026-08-14
+
+Função pura de domínio criada para calcular os valores monetários da conta antes do
+fechamento transacional, sem acionar pagamento fake, persistência, auditoria ou
+outbox.
+
+Artefatos:
+
+| Área                 | Evidência                                                        |
+| -------------------- | ---------------------------------------------------------------- |
+| Cálculo de conta     | `apps/api/src/modules/operation/domain/bill-calculation.ts`      |
+| Testes unitários     | `apps/api/src/modules/operation/domain/bill-calculation.spec.ts` |
+| Export domínio local | `apps/api/src/modules/operation/domain/index.ts`                 |
+
+Decisões implementadas:
+
+- Subtotal é a soma de `quantity * unitPriceCents` somente de itens `ACTIVE`.
+- Itens `CANCELLED` permanecem no histórico, mas não entram no subtotal.
+- Desconto, taxa de serviço, pago e saldo são sempre calculados em centavos inteiros.
+- `totalCents = subtotalCents - discountCents + serviceFeeCents`.
+- `balanceCents = totalCents - paidCents`.
+- Desconto que deixaria total negativo é rejeitado.
+- Pagamento acima do total é rejeitado.
+- Quantidade inválida, preço fracionário/negativo, centavos fracionários/negativos e
+  overflow são rejeitados antes de compor a conta.
+- Nenhuma regra de gateway, cartão, PIX, cobrança real, fiscalidade real, provider
+  externo ou dado real foi introduzida.
+
+Validações executadas:
+
+| Comando                                                                                                                                                     | Resultado                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `npm test -- --runTestsByPath apps/api/src/modules/operation/domain/bill-calculation.spec.ts apps/api/src/modules/operation/domain/bill-invariants.spec.ts` | PASSA: 2 suítes/11 testes                                      |
+| `npm run typecheck`                                                                                                                                         | PASSA                                                          |
+| `npm run prisma:validate --workspace @mrcoti/api`                                                                                                           | PASSA com `DATABASE_URL` temporária de placeholder             |
+| `npm run verify`                                                                                                                                            | PASSA: lint, format, typecheck, 16 suítes/73 testes e contrato |
+
 ## Próxima ação recomendada
 
-Prosseguir para T029 em diante, em ordem, respeitando `approval-record.md`, sem
+Prosseguir para T030 em diante, em ordem, respeitando `approval-record.md`, sem
 `local-prod`, produção, AWS real, provedores reais, dados reais, microsserviços ou
 serviços locais desnecessários.
